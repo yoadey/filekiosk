@@ -4,6 +4,7 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
+import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -29,9 +30,9 @@ public class ImageDisplay extends JFrame {
 
 	private ImageInfo imgInfo;
 
-	private BufferedImage img;
+	private Image img;
 
-	private BufferedImage nextImg;
+	private Image nextImg;
 
 	public ImageDisplay() {
 		super("ImageViewer");
@@ -56,13 +57,9 @@ public class ImageDisplay extends JFrame {
 				g.setColor(Color.black);
 				g.fillRect(0, 0, getWidth(), getHeight());
 				if (img != null) {
-					double factor = Math.min(((double) getHeight()) / img.getHeight(),
-							((double) getWidth()) / img.getHeight());
-					int width = (int) (img.getWidth() * factor);
-					int height = (int) (img.getHeight() * factor);
-					int x = (getWidth() - width) / 2;
-					int y = (getHeight() - height) / 2;
-					g.drawImage(img, x, y, width, height, this);
+					int x = (getWidth() - img.getWidth(null)) / 2;
+					int y = (getHeight() - img.getHeight(null)) / 2;
+					g.drawImage(img, x, y, img.getWidth(null), img.getHeight(null), this);
 				}
 			}
 		});
@@ -93,7 +90,13 @@ public class ImageDisplay extends JFrame {
 				img = nextImg;
 				nextImg = null;
 				byte[] imageData = imagesController.image(imagesInfos.get(imageNumber).getId());
-				nextImg = ImageIO.read(new ByteArrayInputStream(imageData));
+				BufferedImage temp = ImageIO.read(new ByteArrayInputStream(imageData));
+
+				double factor = Math.min(((double) getHeight()) / temp.getHeight(),
+						((double) getWidth()) / temp.getHeight());
+				int width = (int) (temp.getWidth() * factor);
+				int height = (int) (temp.getHeight() * factor);
+				nextImg = temp.getScaledInstance(width, height, Image.SCALE_SMOOTH);
 			}
 		}
 	}
