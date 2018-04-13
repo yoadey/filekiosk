@@ -1,3 +1,2 @@
 slideshow.path: @basedir@\..\images
 slideshow.timeout.default: 5000
-server.port: 8090 
