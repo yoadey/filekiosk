@@ -2,10 +2,12 @@ package de.may.ac;
 
 import java.awt.Color;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
+import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
 import java.awt.Image;
+import java.awt.Transparency;
+import java.awt.Window;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -21,7 +23,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import de.may.ac.model.ImageInfo;
+import lombok.extern.log4j.Log4j2;
 
+@Log4j2
 @Component
 public class ImageDisplay extends JFrame {
 
@@ -34,15 +38,11 @@ public class ImageDisplay extends JFrame {
 
 	private Image img;
 
-	private Image nextImg;
+	private BufferedImage nextImg;
 
+	private BufferedImage buffer;
+	
 	private int imageNumber;
-
-	private long msCalc;
-
-	private long msPassed;
-
-	private long time;
 
 	public ImageDisplay() {
 		super("ImageViewer");
@@ -61,12 +61,19 @@ public class ImageDisplay extends JFrame {
 		GraphicsDevice gs = ge.getDefaultScreenDevice();
 		gs.setFullScreenWindow(this);
 
+	    GraphicsConfiguration config = gs.getDefaultConfiguration();
+	    Window window = gs.getFullScreenWindow();
+	    buffer = config.createCompatibleImage(window.getWidth(), window.getHeight(), Transparency.TRANSLUCENT);
+	    nextImg = config.createCompatibleImage(window.getWidth(), window.getHeight(), Transparency.TRANSLUCENT);
+		
 		add(new java.awt.Component() {
 			private static final long serialVersionUID = 1L;
 
 			@Override
 			public void paint(Graphics g) {
 				super.paint(g);
+
+				log.debug(() -> "Repainting component for image: " + imageNumber);
 				g.setColor(Color.black);
 				g.fillRect(0, 0, getWidth(), getHeight());
 				if (img != null) {
@@ -74,10 +81,7 @@ public class ImageDisplay extends JFrame {
 					int y = (getHeight() - img.getHeight(null)) / 2;
 					g.drawImage(img, x, y, img.getWidth(null), img.getHeight(null), this);
 				}
-				g.setColor(Color.black);
-				Graphics2D g2d = (Graphics2D) g;
-				g2d.drawString("imageNumber: " + imageNumber + "\r\nmsCalc: " + msCalc + "\r\nmsPassed: " + msPassed
-						+ "\r\ntime:" + time, 40, 200);
+				log.debug(() -> "Repainting image finished: " + imageNumber);
 			}
 		});
 	}
@@ -96,7 +100,10 @@ public class ImageDisplay extends JFrame {
 			repaint();
 
 			// load next image into Buffer
-			nextImg = null;
+			BufferedImage switchImg = buffer;
+			nextImg = buffer;
+			buffer = switchImg;
+			
 			int nextImgNumber = (imageNumber + 1) % imagesInfos.size();
 			byte[] imageData = imagesController.image(imagesInfos.get(nextImgNumber).getId());
 			BufferedImage temp = ImageIO.read(new ByteArrayInputStream(imageData));
@@ -105,7 +112,13 @@ public class ImageDisplay extends JFrame {
 					((double) getWidth()) / temp.getHeight());
 			int width = (int) (temp.getWidth() * factor);
 			int height = (int) (temp.getHeight() * factor);
-			nextImg = temp.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+			Image nextImg = temp.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+			Graphics g = buffer.getGraphics();
+			g.setColor(Color.BLACK);
+			g.fillRect(0, 0, buffer.getWidth(), buffer.getHeight());
+			int x = (getWidth() - nextImg.getWidth(null)) / 2;
+			int y = (getHeight() - nextImg.getHeight(null)) / 2;
+			g.drawImage(nextImg, x, y, nextImg.getWidth(null), nextImg.getHeight(null), this);
 		}
 	}
 
@@ -124,7 +137,6 @@ public class ImageDisplay extends JFrame {
 
 		for (int i = 0; i < imagesInfos.size(); i++) {
 			if (imagesInfos.get(i).getTimeout() >= msRemaining) {
-				System.out.println("Current image: " + msRemaining);
 				return i;
 			}
 			msRemaining -= imagesInfos.get(i).getTimeout();
