@@ -1,0 +1,2 @@
+slideshow.path: @basedir@\..\images
+slideshow.timeout.default: 5000
