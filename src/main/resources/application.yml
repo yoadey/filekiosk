@@ -1,2 +1,3 @@
 slideshow.path: @basedir@\..\images
-slideshow.timeout.default: 5000
+slideshow.timeout.default: 10000
+logging.level.de.may.ac: INFO

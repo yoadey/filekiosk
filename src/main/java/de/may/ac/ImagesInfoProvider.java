@@ -1,59 +1,74 @@
 package de.may.ac;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.regex.Matcher;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
-import org.apache.commons.io.FileUtils;
+import javax.annotation.PostConstruct;
+import javax.xml.bind.DatatypeConverter;
+
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import de.may.ac.model.ImageInfo;
+import lombok.SneakyThrows;
+import lombok.extern.log4j.Log4j2;
 
 @Component
+@Log4j2
 public class ImagesInfoProvider {
 
 	@Value("${slideshow.path}")
-	private File rootPath;
+	private String rootPath;
 
 	@Value("${slideshow.timeout.default:1000}")
 	private int defaultTimeout;
 
-	public byte[] image(int imageid) throws IOException {
+	private Map<String, ImageInfo> cache = new HashMap<>();
 
-		List<File> listFiles = new ArrayList<>(FileUtils.listFiles(rootPath, new String[] { "png" }, false));
-		return listFiles.stream()//
-				.filter(f -> ImageInfo.FILENAME_PATTERN.matcher(f.getName()).matches()) //
-				.filter(f -> getImageNumber(f) == imageid) //
-				.findFirst() //
-				.map(t -> {
-					try {
-						return FileUtils.readFileToByteArray(t);
-					} catch (IOException e) {
-						return null;
-					}
-				}) //
-				.orElseThrow(() -> new IllegalArgumentException("Image not found: " + imageid));
-	}
+	private List<ImageInfo> imageInfos;
 
 	public List<ImageInfo> imageInfos() {
-		List<File> listFiles = new ArrayList<>(FileUtils.listFiles(rootPath, new String[] { "png" }, false));
-		return listFiles.stream()//
-				.filter(f -> ImageInfo.FILENAME_PATTERN.matcher(f.getName()).matches())
-				.sorted((f1, f2) -> getImageNumber(f1) - getImageNumber(f2))//
-				.map(f -> new ImageInfo(f.getName(), defaultTimeout)) //
-				.collect(Collectors.toCollection(ArrayList::new));
+		return imageInfos;
 	}
 
-	private int getImageNumber(File f) {
-		Matcher matcher = ImageInfo.FILENAME_PATTERN.matcher(f.getName());
-		if (matcher.matches()) {
-			return Integer.parseInt(matcher.group(1));
-		} else {
-			return 0;
+	@PostConstruct
+	@Scheduled(fixedDelay = 1000)
+	public void updateImages() throws IOException {
+		log.trace(() -> "updateImages() started");
+		imageInfos = Files.list(Paths.get(rootPath))//
+				.filter(p -> p.toString().toLowerCase().endsWith(".png")) //
+				.map(p -> cache.computeIfAbsent(hash(p), h -> new ImageInfo(p, h, defaultTimeout))) //
+				.sorted((i1, i2) -> i1.getId() - i2.getId()) //
+				.collect(Collectors.toCollection(ArrayList::new));
+
+		if (imageInfos.size() != cache.size()) {
+			log.debug(() -> "updateImges: Images have changed on disk, remove old images from cache");
+			// Collect hashes which are not used anymore
+			List<String> keysToRemove = cache.entrySet().stream() //
+					.filter(e -> !imageInfos.contains(e.getValue())) //
+					.map(Entry::getKey) //
+					.collect(Collectors.toList());
+
+			// Remove unused hashes
+			keysToRemove.stream().forEach(k -> cache.remove(k));
 		}
+		log.trace(() -> "updateImages() finished");
+	}
+
+	@SneakyThrows
+	private String hash(Path p) {
+		MessageDigest digest = MessageDigest.getInstance("MD5");
+		byte[] encodedHash = digest.digest(Files.readAllBytes(p));
+		return DatatypeConverter.printHexBinary(encodedHash);
 	}
 }
